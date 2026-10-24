@@ -1,0 +1,576 @@
+/* STREAMING_CHUNK:Importing required namespaces... */
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace LibraryLoanSystem
+{
+// ==========================================
+// 1. DATA MODELS / ENTITIES
+// ==========================================
+
+/* STREAMING_CHUNK:Defining the User entity... */
+public class User
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    [StringLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(100)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(20)]
+    public string Phone { get; set; } = string.Empty;
+
+    public DateTime RegistrationDate { get; set; } = DateTime.Now;
+
+    // Navigation property
+    public ICollection<Loan> Loans { get; set; } = new List<Loan>();
+}
+
+/* STREAMING_CHUNK:Defining the Book entity... */
+public class Book
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    [StringLength(150)]
+    public string Title { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(100)]
+    public string Author { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(20)]
+    public string ISBN { get; set; } = string.Empty;
+
+    [Range(0, int.MaxValue)]
+    public int TotalCopies { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int AvailableCopies { get; set; }
+
+    // Navigation property
+    public ICollection<Loan> Loans { get; set; } = new List<Loan>();
+}
+
+/* STREAMING_CHUNK:Defining the Loan entity... */
+public class Loan
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    public int UserId { get; set; }
+
+    [ForeignKey(nameof(UserId))]
+    public User? User { get; set; }
+
+    [Required]
+    public int BookId { get; set; }
+
+    [ForeignKey(nameof(BookId))]
+    public Book? Book { get; set; }
+
+    public DateTime LoanDate { get; set; } = DateTime.Now;
+
+    public DateTime DueDate { get; set; }
+
+    public DateTime? ReturnDate { get; set; }
+
+    public bool IsReturned => ReturnDate.HasValue;
+}
+
+// ==========================================
+// 2. DATABASE CONTEXT (EF CORE)
+// ==========================================
+
+/* STREAMING_CHUNK:Configuring EF Core DbContext... */
+public class LibraryContext : DbContext
+{
+    public DbSet<User> Users { get; set; } = null!;
+    public DbSet<Book> Books { get; set; } = null!;
+    public DbSet<Loan> Loans { get; set; } = null!;
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // Persistence via SQLite local database file
+        optionsBuilder.UseSqlite("Data Source=library_system.db");
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        // Entity Relationships & Rules
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.Email)
+            .IsUnique();
+
+        modelBuilder.Entity<Book>()
+            .HasIndex(b => b.ISBN)
+            .IsUnique();
+
+        modelBuilder.Entity<Loan>()
+            .HasOne(l => l.User)
+            .WithMany(u => u.Loans)
+            .HasForeignKey(l => l.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Loan>()
+            .HasOne(l => l.Book)
+            .WithMany(b => b.Loans)
+            .HasForeignKey(l => l.BookId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+// ==========================================
+// 3. MAIN PROGRAM & INTERFACE
+// ==========================================
+
+/* STREAMING_CHUNK:Initializing main program entry point... */
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Ensure Database is Created and Seeded
+        using (var db = new LibraryContext())
+        {
+            db.Database.EnsureCreated();
+            SeedInitialData(db);
+        }
+
+        bool running = true;
+        while (running)
+        {
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("==============================================");
+            Console.WriteLine("   SISTEMA DE GESTIÓN DE BIBLIOTECA (SQLite)  ");
+            Console.WriteLine("==============================================");
+            Console.ResetColor();
+            Console.WriteLine("1. Registrar Nuevo Usuario");
+            Console.WriteLine("2. Registrar Nuevo Libro");
+            Console.WriteLine("3. Registrar Préstamo de Libro");
+            Console.WriteLine("4. Registrar Devolución de Libro");
+            Console.WriteLine("5. Listar Libros Disponibles");
+            Console.WriteLine("6. Listar Préstamos Activos");
+            Console.WriteLine("7. Historial de Préstamos por Usuario");
+            Console.WriteLine("0. Salir");
+            Console.WriteLine("----------------------------------------------");
+            Console.Write("Seleccione una opción: ");
+
+            string? option = Console.ReadLine();
+
+            switch (option)
+            {
+                case "1":
+                    RegisterUser();
+                    break;
+                case "2":
+                    RegisterBook();
+                    break;
+                case "3":
+                    CreateLoan();
+                    break;
+                case "4":
+                    ReturnBook();
+                    break;
+                case "5":
+                    ListAvailableBooks();
+                    break;
+                case "6":
+                    ListActiveLoans();
+                    break;
+                case "7":
+                    ListUserLoanHistory();
+                    break;
+                case "0":
+                    running = false;
+                    Console.WriteLine("\n¡Gracias por usar el Sistema de Biblioteca!");
+                    break;
+                default:
+                    ShowError("Opción no válida. Presione cualquier tecla...");
+                    break;
+            }
+        }
+    }
+
+    /* STREAMING_CHUNK:Seeding initial data into database... */
+    private static void SeedInitialData(LibraryContext db)
+    {
+        if (!db.Books.Any())
+        {
+            db.Books.AddRange(
+                new Book { Title = "Cien Años de Soledad", Author = "Gabriel García Márquez", ISBN = "9780307474728", TotalCopies = 5, AvailableCopies = 5 },
+                new Book { Title = "Don Quijote de la Mancha", Author = "Miguel de Cervantes", ISBN = "9788424116032", TotalCopies = 3, AvailableCopies = 3 },
+                new Book { Title = "1984", Author = "George Orwell", ISBN = "9780451524935", TotalCopies = 4, AvailableCopies = 4 }
+            );
+        }
+
+        if (!db.Users.Any())
+        {
+            db.Users.AddRange(
+                new User { Name = "Carlos Pérez", Email = "carlos@example.com", Phone = "555-0192" },
+                new User { Name = "María Rodríguez", Email = "maria@example.com", Phone = "555-0188" }
+            );
+        }
+
+        db.SaveChanges();
+    }
+
+    /* STREAMING_CHUNK:Implementing user registration logic... */
+    private static void RegisterUser()
+    {
+        Console.Clear();
+        Console.WriteLine("=== REGISTRAR NUEVO USUARIO ===");
+
+        Console.Write("Nombre Completo: ");
+        string name = Console.ReadLine() ?? "";
+
+        Console.Write("Correo Electrónico: ");
+        string email = Console.ReadLine() ?? "";
+
+        Console.Write("Teléfono: ");
+        string phone = Console.ReadLine() ?? "";
+
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email))
+        {
+            ShowError("El nombre y el correo electrónico son obligatorios.");
+            return;
+        }
+
+        using (var db = new LibraryContext())
+        {
+            try
+            {
+                var user = new User { Name = name, Email = email, Phone = phone };
+                db.Users.Add(user);
+                db.SaveChanges();
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("\n¡Usuario registrado exitosamente!");
+                Console.ResetColor();
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Error al guardar en base de datos: {ex.Message}");
+            }
+        }
+        WaitKey();
+    }
+
+    /* STREAMING_CHUNK:Implementing book creation logic... */
+    private static void RegisterBook()
+    {
+        Console.Clear();
+        Console.WriteLine("=== REGISTRAR NUEVO LIBRO ===");
+
+        Console.Write("Título: ");
+        string title = Console.ReadLine() ?? "";
+
+        Console.Write("Autor: ");
+        string author = Console.ReadLine() ?? "";
+
+        Console.Write("ISBN: ");
+        string isbn = Console.ReadLine() ?? "";
+
+        Console.Write("Cantidad de Copias: ");
+        if (!int.TryParse(Console.ReadLine(), out int copies) || copies < 1)
+        {
+            ShowError("Debe ingresar una cantidad de copias válida (mayor a 0).");
+            return;
+        }
+
+        using (var db = new LibraryContext())
+        {
+            try
+            {
+                var book = new Book
+                {
+                    Title = title,
+                    Author = author,
+                    ISBN = isbn,
+                    TotalCopies = copies,
+                    AvailableCopies = copies
+                };
+
+                db.Books.Add(book);
+                db.SaveChanges();
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("\n¡Libro registrado exitosamente en la base de datos!");
+                Console.ResetColor();
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Error al registrar libro: {ex.Message}");
+            }
+        }
+        WaitKey();
+    }
+
+    /* STREAMING_CHUNK:Implementing loan processing logic... */
+    private static void CreateLoan()
+    {
+        Console.Clear();
+        Console.WriteLine("=== REGISTRAR PRÉSTAMO DE LIBRO ===");
+
+        using (var db = new LibraryContext())
+        {
+            Console.Write("Ingrese ID o Email del Usuario: ");
+            string userSearch = Console.ReadLine() ?? "";
+
+            var user = db.Users.FirstOrDefault(u => u.Email == userSearch || u.Id.ToString() == userSearch);
+            if (user == null)
+            {
+                ShowError("Usuario no encontrado.");
+                return;
+            }
+
+            Console.WriteLine($"Usuario Seleccionado: {user.Name} ({user.Email})");
+
+            Console.Write("Ingrese ID o ISBN del Libro: ");
+            string bookSearch = Console.ReadLine() ?? "";
+
+            var book = db.Books.FirstOrDefault(b => b.ISBN == bookSearch || b.Id.ToString() == bookSearch);
+            if (book == null)
+            {
+                ShowError("Libro no encontrado.");
+                return;
+            }
+
+            if (book.AvailableCopies <= 0)
+            {
+                ShowError($"El libro '{book.Title}' no tiene copias disponibles para préstamo.");
+                return;
+            }
+
+            Console.Write("Días de préstamo (Por defecto 14): ");
+            string daysInput = Console.ReadLine() ?? "";
+            int days = int.TryParse(daysInput, out int d) ? d : 14;
+
+            // Create loan transaction
+            using (var transaction = db.Database.BeginTransaction())
+            {
+                try
+                {
+                    var loan = new Loan
+                    {
+                        UserId = user.Id,
+                        BookId = book.Id,
+                        LoanDate = DateTime.Now,
+                        DueDate = DateTime.Now.AddDays(days)
+                    };
+
+                    book.AvailableCopies -= 1;
+
+                    db.Loans.Add(loan);
+                    db.SaveChanges();
+
+                    transaction.Commit();
+
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"\n¡Préstamo registrado con éxito!");
+                    Console.WriteLine($"Fecha Límite de Devolución: {loan.DueDate:dd/MM/yyyy}");
+                    Console.ResetColor();
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    ShowError($"Fallo al procesar el préstamo: {ex.Message}");
+                }
+            }
+        }
+        WaitKey();
+    }
+
+    /* STREAMING_CHUNK:Implementing book return logic... */
+    private static void ReturnBook()
+    {
+        Console.Clear();
+        Console.WriteLine("=== DEVOLUCIÓN DE LIBRO ===");
+
+        Console.Write("Ingrese el ID del Préstamo: ");
+        if (!int.TryParse(Console.ReadLine(), out int loanId))
+        {
+            ShowError("ID de préstamo inválido.");
+            return;
+        }
+
+        using (var db = new LibraryContext())
+        {
+            var loan = db.Loans
+                .Include(l => l.Book)
+                .Include(l => l.User)
+                .FirstOrDefault(l => l.Id == loanId);
+
+            if (loan == null)
+            {
+                ShowError("No se encontró ningún préstamo con el ID especificado.");
+                return;
+            }
+
+            if (loan.IsReturned)
+            {
+                ShowError($"Este préstamo ya fue devuelto el {loan.ReturnDate:dd/MM/yyyy HH:mm}.");
+                return;
+            }
+
+            using (var transaction = db.Database.BeginTransaction())
+            {
+                try
+                {
+                    loan.ReturnDate = DateTime.Now;
+                    if (loan.Book != null)
+                    {
+                        loan.Book.AvailableCopies += 1;
+                    }
+
+                    db.SaveChanges();
+                    transaction.Commit();
+
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("\n¡Devolución completada y stock actualizado!");
+                    if (loan.ReturnDate > loan.DueDate)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("NOTA: La devolución se efectuó fuera de la fecha límite.");
+                    }
+                    Console.ResetColor();
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    ShowError($"Fallo al registrar la devolución: {ex.Message}");
+                }
+            }
+        }
+        WaitKey();
+    }
+
+    /* STREAMING_CHUNK:Implementing reporting and list queries... */
+    private static void ListAvailableBooks()
+    {
+        Console.Clear();
+        Console.WriteLine("=== LIBROS EN CATÁLOGO ===");
+
+        using (var db = new LibraryContext())
+        {
+            var books = db.Books.ToList();
+
+            if (!books.Any())
+            {
+                Console.WriteLine("No hay libros registrados.");
+            }
+            else
+            {
+                Console.WriteLine($"{"ID",-5} | {"Título",-30} | {"Autor",-20} | {"Disponibles",-12}");
+                Console.WriteLine(new string('-', 75));
+
+                foreach (var b in books)
+                {
+                    Console.WriteLine($"{b.Id,-5} | {Truncate(b.Title, 30),-30} | {Truncate(b.Author, 20),-20} | {b.AvailableCopies}/{b.TotalCopies}");
+                }
+            }
+        }
+        WaitKey();
+    }
+
+    private static void ListActiveLoans()
+    {
+        Console.Clear();
+        Console.WriteLine("=== PRÉSTAMOS ACTIVOS ===");
+
+        using (var db = new LibraryContext())
+        {
+            var activeLoans = db.Loans
+                .Include(l => l.User)
+                .Include(l => l.Book)
+                .Where(l => l.ReturnDate == null)
+                .ToList();
+
+            if (!activeLoans.Any())
+            {
+                Console.WriteLine("No hay préstamos activos actualmente.");
+            }
+            else
+            {
+                Console.WriteLine($"{"ID",-5} | {"Usuario",-20} | {"Libro",-25} | {"Fecha Límite",-12}");
+                Console.WriteLine(new string('-', 70));
+
+                foreach (var l in activeLoans)
+                {
+                    bool isOverdue = DateTime.Now > l.DueDate;
+                    if (isOverdue) Console.ForegroundColor = ConsoleColor.Red;
+
+                    Console.WriteLine($"{l.Id,-5} | {Truncate(l.User?.Name ?? "N/A", 20),-20} | {Truncate(l.Book?.Title ?? "N/A", 25),-25} | {l.DueDate:dd/MM/yyyy}");
+
+                    Console.ResetColor();
+                }
+            }
+        }
+        WaitKey();
+    }
+
+    private static void ListUserLoanHistory()
+    {
+        Console.Clear();
+        Console.WriteLine("=== HISTORIAL DE PRÉSTAMOS POR USUARIO ===");
+
+        Console.Write("Ingrese Email o ID de Usuario: ");
+        string search = Console.ReadLine() ?? "";
+
+        using (var db = new LibraryContext())
+        {
+            var user = db.Users
+                .Include(u => u.Loans)
+                    .ThenInclude(l => l.Book)
+                .FirstOrDefault(u => u.Email == search || u.Id.ToString() == search);
+
+            if (user == null)
+            {
+                ShowError("Usuario no encontrado.");
+                return;
+            }
+
+            Console.WriteLine($"\nHistorial para: {user.Name} ({user.Email})");
+            Console.WriteLine($"{"ID Préstamo",-12} | {"Libro",-25} | {"Préstamo",-10} | {"Estado",-15}");
+            Console.WriteLine(new string('-', 70));
+
+            foreach (var l in user.Loans)
+            {
+                string status = l.IsReturned ? $"Devuelto ({l.ReturnDate:dd/MM/yy})" : "Activo";
+                Console.WriteLine($"{l.Id,-12} | {Truncate(l.Book?.Title ?? "N/A", 25),-25} | {l.LoanDate:dd/MM/yyyy} | {status}");
+            }
+        }
+        WaitKey();
+    }
+
+    /* STREAMING_CHUNK:Implementing helper functions... */
+    private static void ShowError(string message)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"\nError: {message}");
+        Console.ResetColor();
+        WaitKey();
+    }
+
+    private static void WaitKey()
+    {
+        Console.WriteLine("\nPresione cualquier tecla para continuar...");
+        Console.ReadKey();
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength - 3) + "...";
+    }
+}
+}

@@ -1,0 +1,788 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
+
+namespace VeterinaryClinicSystem
+{
+    // ==========================================
+    // 1. MODELOS DE DATOS / ENTIDADES (TABLAS BD)
+    // ==========================================
+
+    /// <summary>
+    /// Entidad Propietario (Dueño de la mascota)
+    /// </summary>
+    public class Owner
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        [StringLength(100)]
+        public string FullName { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(20)]
+        public string Phone { get; set; } = string.Empty;
+
+        [StringLength(100)]
+        public string Email { get; set; } = string.Empty;
+
+        [StringLength(200)]
+        public string Address { get; set; } = string.Empty;
+
+        public DateTime RegistrationDate { get; set; } = DateTime.Now;
+
+        // Relación 1 a N con Pacientes/Mascotas
+        public ICollection<Pet> Pets { get; set; } = new List<Pet>();
+    }
+
+    /// <summary>
+    /// Entidad Paciente / Mascota
+    /// </summary>
+    public class Pet
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        [StringLength(50)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(30)]
+        public string Species { get; set; } = string.Empty; // Perro, Gato, Ave, etc.
+
+        [StringLength(30)]
+        public string Breed { get; set; } = string.Empty;   // Raza
+
+        [Range(0, 50)]
+        public int AgeYears { get; set; }
+
+        [Range(0.01, 500.0)]
+        public double WeightKg { get; set; }
+
+        [Required]
+        public int OwnerId { get; set; }
+
+        [ForeignKey(nameof(OwnerId))]
+        public Owner? Owner { get; set; }
+
+        // Relación 1 a N con Consultas Médicas
+        public ICollection<MedicalRecord> MedicalRecords { get; set; } = new List<MedicalRecord>();
+    }
+
+    /// <summary>
+    /// Entidad Historia / Consulta Médica
+    /// </summary>
+    public class MedicalRecord
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        public int PetId { get; set; }
+
+        [ForeignKey(nameof(PetId))]
+        public Pet ? Pet { get; set; }
+
+        public DateTime VisitDate { get; set; } = DateTime.Now;
+
+        [Required]
+        [StringLength(250)]
+        public string Reason { get; set; } = string.Empty; // Motivo de consulta
+
+        [Required]
+        [StringLength(500)]
+        public string Diagnosis { get; set; } = string.Empty; // Diagnóstico médico
+
+        [StringLength(500)]
+        public string Treatment { get; set; } = string.Empty; // Tratamiento y prescripción
+
+        public decimal Cost { get; set; }
+    }
+
+    // ==========================================
+    // 2. CONTEXTO DE BASE DE DATOS (EF CORE + SQLITE)
+    // ==========================================
+
+    public class VetContext : DbContext
+    {
+        public DbSet<Owner> Owners { get; set; } = null!;
+        public DbSet<Pet> Pets { get; set; } = null!;
+        public DbSet<MedicalRecord> MedicalRecords { get; set; } = null!;
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            // Configuración del motor de base de datos SQLite local
+            optionsBuilder.UseSqlite("Data Source=veterinaria_clinica.db");
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            // Relaciones y reglas
+            modelBuilder.Entity<Pet>()
+                .HasOne(p => p.Owner)
+                .WithMany(o => o.Pets)
+                .HasForeignKey(p => p.OwnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<MedicalRecord>()
+                .HasOne(m => m.Pet)
+                .WithMany(p => p.MedicalRecords)
+                .HasForeignKey(m => m.PetId)
+                .OnDelete(DeleteBehavior.Cascade);
+        }
+    }
+
+    // ==========================================
+    // 3. PROGRAMA PRINCIPAL Y FORMULARIOS CRUD
+    // ==========================================
+
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Asegurar creación y datos iniciales en la base de datos SQLite
+            using (var db = new VetContext())
+            {
+                db.Database.EnsureCreated();
+                SeedInitialData(db);
+            }
+
+            bool exit = false;
+            while (!exit)
+            {
+                Console.Clear();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("=================================================");
+                Console.WriteLine("  SISTEMA DE CONTROL CLÍNICO VETERINARIO v2 (SQLite) ");
+                Console.WriteLine("=================================================");
+                Console.ResetColor();
+                Console.WriteLine("1. Gestión de Propietarios (CRUD)");
+                Console.WriteLine("2. Gestión de Pacientes / Mascotas (CRUD)");
+                Console.WriteLine("3. Gestión de Consultas Médicas e Historial (CRUD)");
+                Console.WriteLine("4. Reporte General de Pacientes y Atenciones");
+                Console.WriteLine("0. Salir");
+                Console.WriteLine("-------------------------------------------------");
+                Console.Write("Seleccione una opción: ");
+
+                string option = Console.ReadLine() ?? "";
+
+                switch (option)
+                {
+                    case "1":
+                        OwnersMenu();
+                        break;
+                    case "2":
+                        PetsMenu();
+                        break;
+                    case "3":
+                        MedicalRecordsMenu();
+                        break;
+                    case "4":
+                        ShowGeneralReport();
+                        break;
+                    case "0":
+                        exit = true;
+                        Console.WriteLine("\n¡Gracias por utilizar el Sistema Veterinario!");
+                        break;
+                    default:
+                        ShowError("Opción inválida.");
+                        break;
+                }
+            }
+        }
+
+        // ==========================================
+        // SEED DE DATOS INICIALES
+        // ==========================================
+        private static void SeedInitialData(VetContext db)
+        {
+            if (!db.Owners.Any())
+            {
+                var owner1 = new Owner { FullName = "Juan Carlos Gómez", Phone = "5555-1234", Email = "juan@example.com", Address = "Ciudad Guatemala" };
+                var owner2 = new Owner { FullName = "Ana María López", Phone = "5555-5678", Email = "ana@example.com", Address = "Mixco, Guatemala" };
+
+                db.Owners.AddRange(owner1, owner2);
+                db.SaveChanges();
+
+                var pet1 = new Pet { Name = "Max", Species = "Perro", Breed = "Golden Retriever", AgeYears = 3, WeightKg = 28.5, OwnerId = owner1.Id };
+                var pet2 = new Pet { Name = "Luna", Species = "Gato", Breed = "Siamés", AgeYears = 2, WeightKg = 4.2, OwnerId = owner2.Id };
+
+                db.Pets.AddRange(pet1, pet2);
+                db.SaveChanges();
+
+                db.MedicalRecords.Add(new MedicalRecord
+                {
+                    PetId = pet1.Id,
+                    VisitDate = DateTime.Now.AddDays(-10),
+                    Reason = "Vacunación Anual",
+                    Diagnosis = "Mascota totalmente sana",
+                    Treatment = "Aplicación de vacuna quíntuple y desparasitante",
+                    Cost = 250.00m
+                });
+
+                db.SaveChanges();
+            }
+        }
+
+        // ==========================================
+        // SUBMENÚ & CRUD PROPIETARIOS
+        // ==========================================
+        private static void OwnersMenu()
+        {
+            bool back = false;
+            while (!back)
+            {
+                Console.Clear();
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("=== GESTIÓN DE PROPIETARIOS (DUEÑOS) ===");
+                Console.ResetColor();
+                Console.WriteLine("1. Registrar Nuevo Propietario (Create)");
+                Console.WriteLine("2. Listar Propietarios (Read)");
+                Console.WriteLine("3. Actualizar Propietario (Update)");
+                Console.WriteLine("4. Eliminar Propietario (Delete)");
+                Console.WriteLine("0. Volver al Menú Principal");
+                Console.Write("Opción: ");
+
+                string choice = Console.ReadLine() ?? "";
+                switch (choice)
+                {
+                    case "1": CreateOwner(); break;
+                    case "2": ReadOwners(); WaitKey(); break;
+                    case "3": UpdateOwner(); break;
+                    case "4": DeleteOwner(); break;
+                    case "0": back = true; break;
+                    default: ShowError("Opción no válida."); break;
+                }
+            }
+        }
+
+        private static void CreateOwner()
+        {
+            Console.Clear();
+            Console.WriteLine("=== REGISTRAR NUEVO PROPIETARIO ===");
+            Console.Write("Nombre Completo: ");
+            string name = Console.ReadLine() ?? "";
+            Console.Write("Teléfono: ");
+            string phone = Console.ReadLine() ?? "";
+            Console.Write("Correo Electrónico: ");
+            string email = Console.ReadLine() ?? "";
+            Console.Write("Dirección: ");
+            string address = Console.ReadLine() ?? "";
+
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(phone))
+            {
+                ShowError("El nombre y el teléfono son requeridos.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                db.Owners.Add(new Owner { FullName = name, Phone = phone, Email = email, Address = address });
+                db.SaveChanges();
+                ShowSuccess("Propietario registrado exitosamente.");
+            }
+            WaitKey();
+        }
+
+        private static void ReadOwners()
+        {
+            Console.Clear();
+            Console.WriteLine("=== LISTA DE PROPIETARIOS ===");
+            using (var db = new VetContext())
+            {
+                var owners = db.Owners.Include(o => o.Pets).ToList();
+                if (!owners.Any())
+                {
+                    Console.WriteLine("No hay propietarios registrados.");
+                    return;
+                }
+
+                Console.WriteLine($"{"ID",-5} | {"Nombre",-25} | {"Teléfono",-12} | {"Mascotas Registradas",-20}");
+                Console.WriteLine(new string('-', 70));
+                foreach (var o in owners)
+                {
+                    Console.WriteLine($"{o.Id,-5} | {Truncate(o.FullName, 25),-25} | {o.Phone,-12} | {o.Pets.Count} mascota(s)");
+                }
+            }
+        }
+
+        private static void UpdateOwner()
+        {
+            ReadOwners();
+            Console.Write("\nIngrese el ID del Propietario a editar: ");
+            if (!int.TryParse(Console.ReadLine(), out int ownerId))
+            {
+                ShowError("ID no válido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var owner = db.Owners.Find(ownerId);
+                if (owner == null)
+                {
+                    ShowError("Propietario no encontrado.");
+                    return;
+                }
+
+                Console.WriteLine($"Actualizando datos para: {owner.FullName}");
+                Console.Write($"Nuevo Nombre ({owner.FullName}): ");
+                string name = Console.ReadLine() ?? "";
+                if (!string.IsNullOrWhiteSpace(name)) owner.FullName = name;
+
+                Console.Write($"Nuevo Teléfono ({owner.Phone}): ");
+                string phone = Console.ReadLine() ?? "";
+                if (!string.IsNullOrWhiteSpace(phone)) owner.Phone = phone;
+
+                Console.Write($"Nuevo Email ({owner.Email}): ");
+                string email = Console.ReadLine() ?? "";
+                if (!string.IsNullOrWhiteSpace(email)) owner.Email = email;
+
+                db.SaveChanges();
+                ShowSuccess("Datos actualizados correctamente.");
+            }
+            WaitKey();
+        }
+
+        private static void DeleteOwner()
+        {
+            ReadOwners();
+            Console.Write("\nIngrese el ID del Propietario a eliminar: ");
+            if (!int.TryParse(Console.ReadLine(), out int ownerId))
+            {
+                ShowError("ID no válido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var owner = db.Owners.Include(o => o.Pets).FirstOrDefault(o => o.Id == ownerId);
+                if (owner == null)
+                {
+                    ShowError("Propietario no encontrado.");
+                    return;
+                }
+
+                db.Owners.Remove(owner);
+                db.SaveChanges();
+                ShowSuccess("Propietario y sus mascotas asociadas eliminados con éxito.");
+            }
+            WaitKey();
+        }
+
+        // ==========================================
+        // SUBMENÚ & CRUD PACIENTES / MASCOTAS
+        // ==========================================
+        private static void PetsMenu()
+        {
+            bool back = false;
+            while (!back)
+            {
+                Console.Clear();
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("=== GESTIÓN DE PACIENTES (MASCOTAS) ===");
+                Console.ResetColor();
+                Console.WriteLine("1. Registrar Mascota (Create)");
+                Console.WriteLine("2. Listar Mascotas (Read)");
+                Console.WriteLine("3. Actualizar Datos de Mascota (Update)");
+                Console.WriteLine("4. Eliminar Mascota (Delete)");
+                Console.WriteLine("0. Volver al Menú Principal");
+                Console.Write("Opción: ");
+
+                string choice = Console.ReadLine() ?? "";
+                switch (choice)
+                {
+                    case "1": CreatePet(); break;
+                    case "2": ReadPets(); WaitKey(); break;
+                    case "3": UpdatePet(); break;
+                    case "4": DeletePet(); break;
+                    case "0": back = true; break;
+                    default: ShowError("Opción no válida."); break;
+                }
+            }
+        }
+
+        private static void CreatePet()
+        {
+            Console.Clear();
+            Console.WriteLine("=== REGISTRAR NUEVA MASCOTA ===");
+            ReadOwners();
+
+            Console.Write("\nIngrese el ID del Dueño de la Mascota: ");
+            if (!int.TryParse(Console.ReadLine(), out int ownerId))
+            {
+                ShowError("ID de dueño inválido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var owner = db.Owners.Find(ownerId);
+                if (owner == null)
+                {
+                    ShowError("El dueño seleccionado no existe.");
+                    return;
+                }
+
+                Console.Write("Nombre de la Mascota: ");
+                string name = Console.ReadLine() ?? "";
+                Console.Write("Especie (Perro, Gato, Ave, etc.): ");
+                string species = Console.ReadLine() ?? "";
+                Console.Write("Raza: ");
+                string breed = Console.ReadLine() ?? "";
+                Console.Write("Edad (Años): ");
+                int.TryParse(Console.ReadLine(), out int age);
+                Console.Write("Peso (Kg): ");
+                double.TryParse(Console.ReadLine(), out double weight);
+
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(species))
+                {
+                    ShowError("El nombre y la especie son requeridos.");
+                    return;
+                }
+
+                var pet = new Pet
+                {
+                    Name = name,
+                    Species = species,
+                    Breed = breed,
+                    AgeYears = age,
+                    WeightKg = weight,
+                    OwnerId = ownerId
+                };
+
+                db.Pets.Add(pet);
+                db.SaveChanges();
+                ShowSuccess($"¡Mascota '{pet.Name}' registrada exitosamente!");
+            }
+            WaitKey();
+        }
+
+        private static void ReadPets()
+        {
+            Console.Clear();
+            Console.WriteLine("=== CATÁLOGO DE PACIENTES ===");
+            using (var db = new VetContext())
+            {
+                var pets = db.Pets.Include(p => p.Owner).ToList();
+                if (!pets.Any())
+                {
+                    Console.WriteLine("No hay mascotas registradas.");
+                    return;
+                }
+
+                Console.WriteLine($"{"ID",-5} | {"Nombre",-15} | {"Especie",-10} | {"Raza",-15} | {"Edad",-6} | {"Dueño",-20}");
+                Console.WriteLine(new string('-', 80));
+                foreach (var p in pets)
+                {
+                    Console.WriteLine($"{p.Id,-5} | {Truncate(p.Name, 15),-15} | {Truncate(p.Species, 10),-10} | {Truncate(p.Breed, 15),-15} | {p.AgeYears + " años",-6} | {Truncate(p.Owner?.FullName ?? "N/A", 20),-20}");
+                }
+            }
+        }
+
+        private static void UpdatePet()
+        {
+            ReadPets();
+            Console.Write("\nIngrese el ID de la Mascota a editar: ");
+            if (!int.TryParse(Console.ReadLine(), out int petId))
+            {
+                ShowError("ID inválido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var pet = db.Pets.Find(petId);
+                if (pet == null)
+                {
+                    ShowError("Mascota no encontrada.");
+                    return;
+                }
+
+                Console.Write($"Nuevo Nombre ({pet.Name}): ");
+                string name = Console.ReadLine() ?? "";
+                if (!string.IsNullOrWhiteSpace(name)) pet.Name = name;
+
+                Console.Write($"Nuevo Peso en Kg ({pet.WeightKg}): ");
+                if (double.TryParse(Console.ReadLine(), out double w) && w > 0) pet.WeightKg = w;
+
+                Console.Write($"Nueva Edad ({pet.AgeYears}): ");
+                if (int.TryParse(Console.ReadLine(), out int age) && age >= 0) pet.AgeYears = age;
+
+                db.SaveChanges();
+                ShowSuccess("Expediente de la mascota actualizado.");
+            }
+            WaitKey();
+        }
+
+        private static void DeletePet()
+        {
+            ReadPets();
+            Console.Write("\nIngrese el ID de la Mascota a eliminar: ");
+            if (!int.TryParse(Console.ReadLine(), out int petId))
+            {
+                ShowError("ID no válido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var pet = db.Pets.Find(petId);
+                if (pet == null)
+                {
+                    ShowError("Mascota no encontrada.");
+                    return;
+                }
+
+                db.Pets.Remove(pet);
+                db.SaveChanges();
+                ShowSuccess("Mascota eliminada del registro.");
+            }
+            WaitKey();
+        }
+
+        // ==========================================
+        // SUBMENÚ & CRUD CONSULTAS MÉDICAS
+        // ==========================================
+        private static void MedicalRecordsMenu()
+        {
+            bool back = false;
+            while (!back)
+            {
+                Console.Clear();
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("=== HISTORIAL Y CONSULTAS MÉDICAS ===");
+                Console.ResetColor();
+                Console.WriteLine("1. Registrar Nueva Consulta / Atención (Create)");
+                Console.WriteLine("2. Ver Historial Médico por Mascota (Read)");
+                Console.WriteLine("3. Modificar Registro Médico (Update)");
+                Console.WriteLine("4. Eliminar Registro Médico (Delete)");
+                Console.WriteLine("0. Volver al Menú Principal");
+                Console.Write("Opción: ");
+
+                string choice = Console.ReadLine() ?? "";
+                switch (choice)
+                {
+                    case "1": CreateMedicalRecord(); break;
+                    case "2": ReadMedicalRecords(); break;
+                    case "3": UpdateMedicalRecord(); break;
+                    case "4": DeleteMedicalRecord(); break;
+                    case "0": back = true; break;
+                    default: ShowError("Opción no válida."); break;
+                }
+            }
+        }
+
+        private static void CreateMedicalRecord()
+        {
+            Console.Clear();
+            Console.WriteLine("=== REGISTRAR CONSULTA MÉDICA ===");
+            ReadPets();
+
+            Console.Write("\nIngrese el ID de la Mascota Atendida: ");
+            if (!int.TryParse(Console.ReadLine(), out int petId))
+            {
+                ShowError("ID de mascota inválido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var pet = db.Pets.Find(petId);
+                if (pet == null)
+                {
+                    ShowError("Mascota no existe.");
+                    return;
+                }
+
+                Console.Write("Motivo de la consulta: ");
+                string reason = Console.ReadLine() ?? "";
+                Console.Write("Diagnóstico médico: ");
+                string diagnosis = Console.ReadLine() ?? "";
+                Console.Write("Tratamiento / Receta: ");
+                string treatment = Console.ReadLine() ?? "";
+                Console.Write("Costo de la atención (Q): ");
+                decimal.TryParse(Console.ReadLine(), out decimal cost);
+
+                var record = new MedicalRecord
+                {
+                    PetId = petId,
+                    VisitDate = DateTime.Now,
+                    Reason = reason,
+                    Diagnosis = diagnosis,
+                    Treatment = treatment,
+                    Cost = cost
+                };
+
+                db.MedicalRecords.Add(record);
+                db.SaveChanges();
+                ShowSuccess("Consulta registrada con éxito en el historial clínico.");
+            }
+            WaitKey();
+        }
+
+        private static void ReadMedicalRecords()
+        {
+            ReadPets();
+            Console.Write("\nIngrese el ID de la Mascota para ver su Historial: ");
+            if (!int.TryParse(Console.ReadLine(), out int petId))
+            {
+                ShowError("ID inválido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var pet = db.Pets
+                    .Include(p => p.Owner)
+                    .Include(p => p.MedicalRecords)
+                    .FirstOrDefault(p => p.Id == petId);
+
+                if (pet == null)
+                {
+                    ShowError("Mascota no encontrada.");
+                    return;
+                }
+
+                Console.Clear();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"=== HISTORIAL CLÍNICO DE: {pet.Name.ToUpper()} ===");
+                Console.WriteLine($"Especie: {pet.Species} | Raza: {pet.Breed} | Dueño: {pet.Owner?.FullName}");
+                Console.ResetColor();
+                Console.WriteLine(new string('=', 75));
+
+                if (!pet.MedicalRecords.Any())
+                {
+                    Console.WriteLine("No se registran atenciones médicas para este paciente.");
+                }
+                else
+                {
+                    foreach (var m in pet.MedicalRecords.OrderByDescending(m => m.VisitDate))
+                    {
+                        Console.WriteLine($"ID Consulta: {m.Id} | Fecha: {m.VisitDate:dd/MM/yyyy HH:mm}");
+                        Console.WriteLine($"Motivo:      {m.Reason}");
+                        Console.WriteLine($"Diagnóstico: {m.Diagnosis}");
+                        Console.WriteLine($"Tratamiento: {m.Treatment}");
+                        Console.WriteLine($"Costo:       Q{m.Cost:F2}");
+                        Console.WriteLine(new string('-', 75));
+                    }
+                }
+            }
+            WaitKey();
+        }
+
+        private static void UpdateMedicalRecord()
+        {
+            Console.Write("Ingrese el ID de la Consulta Médica a editar: ");
+            if (!int.TryParse(Console.ReadLine(), out int recordId))
+            {
+                ShowError("ID inválido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var record = db.MedicalRecords.Find(recordId);
+                if (record == null)
+                {
+                    ShowError("Consulta no encontrada.");
+                    return;
+                }
+
+                Console.Write($"Nuevo Diagnóstico ({record.Diagnosis}): ");
+                string diag = Console.ReadLine() ?? "";
+                if (!string.IsNullOrWhiteSpace(diag)) record.Diagnosis = diag;
+
+                Console.Write($"Nuevo Tratamiento ({record.Treatment}): ");
+                string treat = Console.ReadLine() ?? "";
+                if (!string.IsNullOrWhiteSpace(treat)) record.Treatment = treat;
+
+                db.SaveChanges();
+                ShowSuccess("Historial actualizado.");
+            }
+            WaitKey();
+        }
+
+        private static void DeleteMedicalRecord()
+        {
+            Console.Write("Ingrese el ID de la Consulta a eliminar: ");
+            if (!int.TryParse(Console.ReadLine(), out int recordId))
+            {
+                ShowError("ID inválido.");
+                return;
+            }
+
+            using (var db = new VetContext())
+            {
+                var record = db.MedicalRecords.Find(recordId);
+                if (record == null)
+                {
+                    ShowError("Registro no encontrado.");
+                    return;
+                }
+
+                db.MedicalRecords.Remove(record);
+                db.SaveChanges();
+                ShowSuccess("Registro médico eliminado.");
+            }
+            WaitKey();
+        }
+
+        // ==========================================
+        // REPORTE GENERAL DEL SISTEMA
+        // ==========================================
+        private static void ShowGeneralReport()
+        {
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine("=== REPORTE GENERAL DE LA CLÍNICA ===");
+            Console.ResetColor();
+
+            using (var db = new VetContext())
+            {
+                int totalOwners = db.Owners.Count();
+                int totalPets = db.Pets.Count();
+                int totalConsultations = db.MedicalRecords.Count();
+                decimal totalRevenue = db.MedicalRecords.Sum(m => (decimal?)m.Cost) ?? 0m;
+
+                Console.WriteLine($"Total de Propietarios Registrados: {totalOwners}");
+                Console.WriteLine($"Total de Pacientes / Mascotas:     {totalPets}");
+                Console.WriteLine($"Total de Atenciones Médicas:        {totalConsultations}");
+                Console.WriteLine($"Total Ingresos por Consultas:       Q{totalRevenue:F2}");
+            }
+            WaitKey();
+        }
+
+        // ==========================================
+        // MÉTODOS AUXILIARES Y FORMATO
+        // ==========================================
+        private static void ShowSuccess(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"\n✓ {message}");
+            Console.ResetColor();
+        }
+
+        private static void ShowError(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"\n✗ Error: {message}");
+            Console.ResetColor();
+            WaitKey();
+        }
+
+        private static void WaitKey()
+        {
+            Console.WriteLine("\nPresione cualquier tecla para continuar...");
+            Console.ReadKey();
+        }
+
+        private static string Truncate(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+            return value.Length <= maxLength ? value : value.Substring(0, maxLength - 3) + "...";
+        }
+    }
+}

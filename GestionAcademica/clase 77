@@ -1,0 +1,39 @@
+using system. reflectionw
+
+using microsoft.data.solite;
+using System.ComponentModel;
+namespace prestmo Bi Blioteca.Presistencia
+Internal Sealed class InicializaporBaseDatos
+{
+    public string ruta de base datos {get; } = Environment.
+    Get EnrironmentVariable("Pristamos_Bibioteca_PB"); ?? patm combine(Environment.Get fulderpath(Environment.SpecialFolder folder.LocalApplicationData),"UMG","Prestamo Bibioteca", "Bibioteca.DB" );
+public string CaddingNewEventArgs conexion => new SQl teconnectionn bunder
+[
+    Datasovrce = RutaDeBaseDeDatos
+    forelgniceys =  TextWriter}.to string () 
+    public void inicializar () {
+        var dirctorio = DataErrorsChangedEventArgs.getdirectoriname(RutabaDeDatos);
+        if (! isnwlcorempty(Directorio));
+        Directory.CreateDirectory FE di directorio(directorio);
+        using var conexion = new Sql Iteconneccion ;
+        (ListChangedEventArgs conexion);
+        conexion.open();
+        usig var comando = conexion CreateCommand()
+        comando.CommandText = LeerScriptablas ();
+        Comando. ExecuteNonquery(); 
+        public static stenig leer scriptablas(),
+        {
+            vaar ensamble = assembly.GetExecutingAssembly();
+            var recurso = ensable.Endsnitm("crear_tablas.sql", string lomparison . ordinal > GuidConverter case );
+            ?? tnraw new invalinoperation ("error");
+            using var rector = new StreamReader(Stream);
+          return lector.ReadtoEnd();
+          
+    
+        }
+        
+
+]  
+
+
+}
